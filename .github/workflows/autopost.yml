@@ -1,0 +1,55 @@
+name: Autopost
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # har 10 minute (GitHub kabhi kabhi thora late chalata hai)
+  workflow_dispatch:          # dashboard ke "Run now" button ke liye
+
+permissions:
+  contents: write
+
+concurrency:
+  group: autopost
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --omit=dev --no-audit --no-fund
+
+      - name: Check feeds and post
+        run: node src/run.js
+        env:
+          GRAPH_API_VERSION: ${{ secrets.GRAPH_API_VERSION }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+          FACEBOOK_PAGE_TOKEN: ${{ secrets.FACEBOOK_PAGE_TOKEN }}
+          INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          PINTEREST_BOARD_ID: ${{ secrets.PINTEREST_BOARD_ID }}
+          PINTEREST_ACCESS_TOKEN: ${{ secrets.PINTEREST_ACCESS_TOKEN }}
+          PINTEREST_REFRESH_TOKEN: ${{ secrets.PINTEREST_REFRESH_TOKEN }}
+          PINTEREST_APP_ID: ${{ secrets.PINTEREST_APP_ID }}
+          PINTEREST_APP_SECRET: ${{ secrets.PINTEREST_APP_SECRET }}
+          PINTEREST_API_BASE: ${{ secrets.PINTEREST_API_BASE }}
+
+      - name: Save state
+        run: |
+          if [ -n "$(git status --porcelain data)" ]; then
+            git config user.name "autoposter-bot"
+            git config user.email "autoposter-bot@users.noreply.github.com"
+            git add data
+            git commit -m "chore: update autoposter state"
+            git pull --rebase
+            git push
+          fi

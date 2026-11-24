@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Social Autoposter</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1c1f26;--muted:#6b7280;--line:#e5e7eb;--accent:#2f5bea;--ok:#15803d;--bad:#b91c1c;--warn:#b45309}
+@media (prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1d2026;--text:#e8eaee;--muted:#9aa1ad;--line:#2d313a;--accent:#6b8cff;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:14px 20px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;flex:1}
+main{max-width:980px;margin:20px auto;padding:0 14px;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+h2{font-size:16px;margin:0 0 10px}h3{font-size:13px;margin:14px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.grow{flex:1;min-width:180px}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--text);font:inherit}
+input[type=checkbox]{width:auto;accent-color:var(--accent)}
+textarea{width:100%;min-height:62px;resize:vertical}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+button.danger{background:transparent;color:var(--bad);border:1px solid var(--line)}
+button.sm{padding:3px 10px;font-size:13px}
+.tag{font-size:12px;padding:2px 10px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.ok{color:var(--ok);border-color:var(--ok)}.tag.bad{color:var(--bad);border-color:var(--bad)}
+.child{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+.muted{color:var(--muted);font-size:13px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.err{color:var(--bad);font-size:13px;min-height:1em}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);text-transform:uppercase}
+.scroll{overflow-x:auto}
+a{color:var(--accent);text-decoration:none}
+code{background:var(--bg);padding:1px 6px;border-radius:6px;font-size:13px}
+details summary{cursor:pointer;font-weight:600}
+</style></head>
+<body>
+<header>
+  <h1>Social Autoposter</h1>
+  <span id="dirty" class="muted"></span>
+  <button class="ghost" id="runnow" disabled>Run now</button>
+  <button id="save" disabled>Save</button>
+</header>
+<main>
+  <section class="card" id="connect">
+    <h2>1. GitHub se connect karein</h2>
+    <div class="row">
+      <input id="repo" class="grow" placeholder="username/repo-name">
+      <input id="token" class="grow" type="password" placeholder="GitHub fine-grained token">
+      <button id="connectBtn">Connect</button>
+    </div>
+    <p class="muted">Token sirf aap ke browser mein save hota hai. Token ko is repo tak limit karein, permissions: <b>Contents: Read and write</b> aur <b>Actions: Read and write</b>.</p>
+    <p class="err" id="cerr"></p>
+  </section>
+
+  <div id="app"></div>
+  <div id="addWrap" style="display:none"><button id="addAuto" class="ghost">+ New parent automation (RSS)</button></div>
+
+  <section class="card" id="logCard" style="display:none">
+    <h2>Activity <button class="ghost sm" id="refresh">Refresh</button></h2>
+    <div class="scroll"><table id="log"></table></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>GitHub Secrets jo chahiye</summary>
+      <p class="muted">Repo → Settings → Secrets and variables → Actions → New repository secret. Sirf wo platforms ke secrets dalein jo use karne hain.</p>
+      <table>
+        <tr><th>Platform</th><th>Secrets</th></tr>
+        <tr><td>Facebook</td><td><code>FACEBOOK_PAGE_ID</code> <code>FACEBOOK_PAGE_TOKEN</code></td></tr>
+        <tr><td>Instagram</td><td><code>INSTAGRAM_USER_ID</code> (token: <code>INSTAGRAM_ACCESS_TOKEN</code>, khali ho to Facebook wala use hota hai)</td></tr>
+        <tr><td>Threads</td><td><code>THREADS_USER_ID</code> <code>THREADS_ACCESS_TOKEN</code></td></tr>
+        <tr><td>Pinterest</td><td><code>PINTEREST_BOARD_ID</code> <code>PINTEREST_ACCESS_TOKEN</code> (optional: <code>PINTEREST_REFRESH_TOKEN</code> <code>PINTEREST_APP_ID</code> <code>PINTEREST_APP_SECRET</code> <code>PINTEREST_API_BASE</code>)</td></tr>
+        <tr><td>Optional</td><td><code>GRAPH_API_VERSION</code> (default v24.0)</td></tr>
+      </table>
+      <p class="muted">Template mein <code>{title}</code> <code>{link}</code> <code>{summary}</code> <code>{feed}</code> use kar sakte hain.</p>
+    </details>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PLAT = { facebook: 'Facebook', instagram: 'Instagram', threads: 'Threads', pinterest: 'Pinterest' };
+const TPL = {
+  facebook: '{title}',
+  instagram: '{title}\n\n{summary}\n\nRead more: {link}',
+  threads: '{title}',
+  pinterest: '{summary}'
+};
+const CFG_PATH = 'config/automations.json', STATE_PATH = 'data/state.json';
+
+let conn = {}; try { conn = JSON.parse(localStorage.getItem('sap') || '{}'); } catch {}
+let cfg = { automations: [] }, cfgSha = null, state = {}, branch = 'main', dirty = false;
+
+function guessRepo() {
+  const m = location.hostname.match(/^(.+)\.github\.io$/);
+  const repo = location.pathname.split('/')[1];
+  return m && repo ? m[1] + '/' + repo : '';
+}
+const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3);
+const b64d = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, '')), c => c.charCodeAt(0)));
+const b64e = s => { let t = ''; new TextEncoder().encode(s).forEach(c => t += String.fromCharCode(c)); return btoa(t); };
+
+async function gh(path, opts = {}) {
+  const r = await fetch('https://api.github.com' + path, {
+    ...opts,
+    headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + conn.token, 'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) }
+  });
+  if (!r.ok) { let m = 'HTTP ' + r.status; try { m = (await r.json()).message || m; } catch {} throw new Error(m); }
+  return r.status === 204 ? null : r.json();
+}
+async function getFile(p) {
+  try {
+    const f = await gh(`/repos/${conn.repo}/contents/${p}?ref=${encodeURIComponent(branch)}`);
+    return { sha: f.sha, json: JSON.parse(b64d(f.content)) };
+  } catch (e) { if (/not found/i.test(e.message)) return null; throw e; }
+}
+
+function setDirty(v) {
+  dirty = v;
+  $('#save').disabled = !v;
+  $('#dirty').textContent = v ? 'Unsaved changes' : '';
+}
+
+async function load() {
+  const repo = await gh(`/repos/${conn.repo}`);
+  branch = repo.default_branch || 'main';
+  const c = await getFile(CFG_PATH);
+  cfg = c ? c.json : { automations: [] }; cfgSha = c ? c.sha : null;
+  cfg.automations = cfg.automations || [];
+  const s = await getFile(STATE_PATH);
+  state = s ? s.json : {};
+  $('#addWrap').style.display = ''; $('#logCard').style.display = '';
+  $('#runnow').disabled = false;
+  setDirty(false); render(); renderLog();
+}
+
+function render() {
+  const cfgd = state.configured || {};
+  $('#app').innerHTML = cfg.automations.map((a, i) => {
+    const st = (state.automations || {})[a.id] || {};
+    const status = st.lastError ? `<span class="bad">Error: ${esc(st.lastError)}</span>`
+      : !st.initialized ? '<span class="muted">Pehli run ka intezar (purane articles skip honge)</span>'
+      : `<span class="muted">Active. Pending posts: ${(st.pending || []).length}</span>`;
+    const kids = (a.children || []).map((c, j) => `
+      <div class="child" data-c="${j}">
+        <div class="row">
+          <select data-f="platform">${Object.keys(PLAT).map(p => `<option value="${p}" ${c.platform === p ? 'selected' : ''}>${PLAT[p]}</option>`).join('')}</select>
+          <label><input type="checkbox" data-f="enabled" ${c.enabled ? 'checked' : ''}> On</label>
+          <span class="tag ${cfgd[c.platform] ? 'ok' : 'bad'}">${cfgd[c.platform] ? 'secrets set' : 'secrets missing'}</span>
+          <span class="grow"></span>
+          <button class="danger sm" data-act="delC">Remove</button>
+        </div>
+        <textarea data-f="template" placeholder="${esc(TPL[c.platform] || '{title}')}">${esc(c.template || '')}</textarea>
+      </div>`).join('');
+    return `<section class="card" data-a="${i}">
+      <div class="row">
+        <input class="grow" data-f="name" value="${esc(a.name)}" placeholder="Automation name">
+        <label><input type="checkbox" data-f="enabled" ${a.enabled ? 'checked' : ''}> On</label>
+        <button class="danger sm" data-act="delA">Delete</button>
+      </div>
+      <div class="row"><span class="tag">Parent: RSS</span><input class="grow" data-f="url" value="${esc(a.url)}" placeholder="https://yoursite.com/feed"></div>
+      <div>${status}</div>
+      <h3>Child automations (yahan auto-post hoga)</h3>
+      ${kids || '<p class="muted">Abhi koi child nahi.</p>'}
+      <div class="row"><select data-new>${Object.keys(PLAT).map(p => `<option value="${p}">${PLAT[p]}</option>`).join('')}</select><button class="ghost" data-act="addC">+ Add child</button></div>
+    </section>`;
+  }).join('') || '<section class="card muted">Abhi koi automation nahi. Neeche "New parent automation" dabayein.</section>';
+}
+
+function renderLog() {
+  const rows = (state.log || []).slice(0, 40).map(l => `<tr>
+    <td class="muted">${esc(new Date(l.time).toLocaleString())}</td>
+    <td>${esc(l.automation)}</td><td>${esc(PLAT[l.platform] || l.platform)}</td>
+    <td class="${l.status === 'posted' ? 'ok' : l.status === 'failed' ? 'bad' : 'warn'}">${esc(l.status)}</td>
+    <td>${/^https?:\/\//.test(l.link || '') ? `<a href="${esc(l.link)}" target="_blank" rel="noopener">${esc(l.title || l.link)}</a>` : esc(l.title)}${l.status !== 'posted' ? `<br><span class="muted">${esc(l.detail)}</span>` : ''}</td></tr>`).join('');
+  $('#log').innerHTML = '<tr><th>Time</th><th>Automation</th><th>Platform</th><th>Status</th><th>Article</th></tr>' + (rows || '<tr><td colspan="5" class="muted">Abhi koi activity nahi.</td></tr>');
+}
+
+// ---- edits ----
+function target(el) {
+  const sec = el.closest('[data-a]'); if (!sec) return {};
+  const a = cfg.automations[+sec.dataset.a];
+  const ch = el.closest('[data-c]');
+  return { a, c: ch ? a.children[+ch.dataset.c] : null };
+}
+function onEdit(e) {
+  const f = e.target.dataset.f; if (!f) return;
+  const { a, c } = target(e.target); if (!a) return;
+  const obj = c || a;
+  obj[f] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+  setDirty(true);
+  if (f === 'platform') render();
+}
+$('#app').addEventListener('input', onEdit);
+$('#app').addEventListener('change', onEdit);
+$('#app').addEventListener('click', e => {
+  const act = e.target.dataset.act; if (!act) return;
+  const { a, c } = target(e.target);
+  if (act === 'delA' && confirm('Ye automation delete karni hai?')) cfg.automations.splice(cfg.automations.indexOf(a), 1);
+  else if (act === 'delC') a.children.splice(a.children.indexOf(c), 1);
+  else if (act === 'addC') {
+    const p = e.target.closest('.row').querySelector('[data-new]').value;
+    a.children = a.children || [];
+    a.children.push({ id: 'c' + uid(), platform: p, enabled: true, template: '' });
+  } else return;
+  setDirty(true); render();
+});
+$('#addAuto').onclick = () => {
+  cfg.automations.push({ id: 'a' + uid(), name: 'My feed', type: 'rss', enabled: true, url: '', children: [] });
+  setDirty(true); render();
+};
+
+$('#save').onclick = async () => {
+  const bad = cfg.automations.find(a => a.enabled && !/^https?:\/\//i.test(a.url || ''));
+  if (bad) return alert('"' + bad.name + '" ka RSS URL theek nahi (http/https se shuru hona chahiye).');
+  $('#save').disabled = true;
+  try {
+    const res = await gh(`/repos/${conn.repo}/contents/${CFG_PATH}`, {
+      method: 'PUT',
+      body: JSON.stringify({ message: 'Update automations from dashboard', content: b64e(JSON.stringify(cfg, null, 2) + '\n'), sha: cfgSha || undefined, branch })
+    });
+    cfgSha = res.content.sha; setDirty(false);
+  } catch (e) { alert('Save fail: ' + e.message); $('#save').disabled = false; }
+};
+
+$('#runnow').onclick = async () => {
+  if (dirty && !confirm('Unsaved changes hain. Pehle Save karein. Phir bhi run karein?')) return;
+  try {
+    await gh(`/repos/${conn.repo}/actions/workflows/autopost.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: branch }) });
+    alert('Run shuru ho gayi. 1 minute baad Refresh dabayein.');
+  } catch (e) { alert('Run fail: ' + e.message); }
+};
+$('#refresh').onclick = async () => {
+  try { const s = await getFile(STATE_PATH); state = s ? s.json : {}; render(); renderLog(); } catch (e) { alert(e.message); }
+};
+
+$('#connectBtn').onclick = async () => {
+  $('#cerr').textContent = '';
+  conn = { repo: $('#repo').value.trim(), token: $('#token').value.trim() };
+  if (!/^[\w.-]+\/[\w.-]+$/.test(conn.repo) || !conn.token) { $('#cerr').textContent = 'Repo (username/repo) aur token dono dein.'; return; }
+  try { await load(); localStorage.setItem('sap', JSON.stringify(conn)); $('#connect').style.display = 'none'; }
+  catch (e) { $('#cerr').textContent = 'Connect nahi hua: ' + e.message; }
+};
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+$('#repo').value = conn.repo || guessRepo();
+if (conn.repo && conn.token) { $('#token').value = conn.token; $('#connectBtn').click(); }
+</script>
+</body></html>
